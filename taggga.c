@@ -123,7 +123,7 @@ void relu_bwd(int n, const float * x, const float * dEdy, float * dEdx){
     }
 }
 
-//誤差逆伝搬(FC層) 問題あり
+//誤差逆伝搬(FC層) 
 void fc_bwd(int m, int n, const float * x, const float *dEdy, const float * A, float * dEdA, float *dEdb, float * dEdx){
     int k, l;
     for (k = 0; k < m; k++){
@@ -142,25 +142,40 @@ void fc_bwd(int m, int n, const float * x, const float *dEdy, const float * A, f
     }
 }
 
-//誤差逆伝搬(3層)
-void backward3(const float * A, const float * b, const float * x, unsigned char t, float * y, float * dEdA, float * dEdb){
+//誤差逆伝搬(6層)
+void backward6(const float * A1, const float * b1, const float * A2, const float * b2, 
+                const float * A3, const float * b3, const float * x, unsigned char t, 
+                float * y, float * dEdA1, float * dEdb1, float * dEdA2, float * dEdb2, 
+                float * dEdA3, float * dEdb3){
     //関数で仮に用いる変数の初期化
-    float dEdx1[10], dEdx2[10], dEdx3[784], y1[10], y2[10];
+    float dEdx1[10], dEdx2[100], dEdx3[100], dEdx4[50], dEdx5[50], dEdx6[784], 
+        y1[50], y2[50], y3[100], y4[100], y5[10];
     init(10, 0, dEdx1);
-    init(10, 0, dEdx2);
-    init(10, 0, y1);
-    init(10, 0, y2);
-    init(784, 0, dEdx3);
-    //推論（３層) Step1
-    fc(10, 784, x, A, b, y1);
-    relu(10, y1, y2);
-    softmax(10, y2, y);
-    //Step2
-    softmaxwithloss_bwd(10, y, t, dEdx1); //dEdxが計算された
-    //Step3
-    relu_bwd(10, y1, dEdx1, dEdx2); //dEdyが計算された
-    //Step4
-    fc_bwd(10, 784, x, dEdx2, A, dEdA, dEdb, dEdx3); //dEdA dEdb dEdxが計算された
+    init(100, 0, dEdx2);
+    init(100, 0, dEdx3);
+    init(50, 0, dEdx4);
+    init(50, 0, dEdx5);
+    init(784, 0, dEdx6);
+    init(50, 0, y1);
+    init(50, 0, y2);
+    init(100, 0, y3);
+    init(100, 0, y4);
+    init(10, 0, y5);
+    //推論（6層) 
+    fc(50, 784, x, A1, b1, y1);
+    relu(50, y1, y2);
+    fc(100, 50, y2, A2, b2, y3);
+    relu(100, y3, y4);
+    fc(10, 100, y4, A3, b3, y5);
+    softmax(10, y5, y);
+    //推論（6層）完了
+    //逆伝搬
+    softmaxwithloss_bwd(10, y, t, dEdx1);
+    fc_bwd(10, 100, y4, dEdx1, A3, dEdA3, dEdb3, dEdx2);
+    relu_bwd(100, y3, dEdx2, dEdx3);
+    fc_bwd(100, 50, y2, dEdx3, A2, dEdA2, dEdb2, dEdx4);
+    relu_bwd(50, y1, dEdx4, dEdx5);
+    fc_bwd(50, 784, x, dEdx5, A3, dEdA1, dEdb1, dEdx6);
 }
 
 //ランダムシャッフル
@@ -180,12 +195,17 @@ float cross_entropy_error(const float * y, int t){
 }
 
 //推論
-int inference3(const float * A, const float * b, const float *x){
+int inference6(const float * A1, const float * b1, const float * A2,
+                const float * b2, const float * A3, const float * b3,
+                const float *x){
     int i, index;
     float m;
-    float y[10];
-    fc(10, 784, x, A, b, y);
-    relu(10, y, y);
+    float y1[50], y2[100], y[10];
+    fc(50, 784, x, A1, b1, y1);
+    relu(50, y1, y1);
+    fc(100, 50, y1, A2, b2, y2);
+    relu(100, y2, y2);
+    fc(10, 100, y2, A3, b3, y);
     softmax(10, y, y);
     m = y[0];
     index = 0;
@@ -203,7 +223,7 @@ int inference3(const float * A, const float * b, const float *x){
 }
 
 int main(){
-    //補助関数
+    //ファイル読み込み
     float * train_x = NULL;
     unsigned char * train_y = NULL;
     int train_count = -1;
@@ -217,60 +237,103 @@ int main(){
     int batch_size = 100;
     float l_rate = 0.1;
     int epoch = 10;
-    int index[10000];
+    int index[60000];
     float *y = malloc(sizeof(float) * 10);
-    float *dEdA = malloc(sizeof(float) * 784 * 10);
-    float *dEdb = malloc(sizeof(float) * 10);
-    float *A = malloc(sizeof(float) * 784 * 10);
-    float *b = malloc(sizeof(float) * 10);
-    float *avr_dEdA = malloc(sizeof(float) * 784 * 10);
-    float *avr_dEdb = malloc(sizeof(float) * 10);
+    float *dEdA1 = malloc(sizeof(float) * 784 * 50);
+    float *dEdb1 = malloc(sizeof(float) * 50);
+    float *dEdA2 = malloc(sizeof(float) * 50 * 100);
+    float *dEdb2 = malloc(sizeof(float) * 100);
+    float *dEdA3 = malloc(sizeof(float) * 100 * 10);
+    float *dEdb3 = malloc(sizeof(float) * 10);
+    float *A1 = malloc(sizeof(float) * 784 * 50);
+    float *A2 = malloc(sizeof(float) * 50 * 100);
+    float *A3 = malloc(sizeof(float) * 100 * 10);
+    float *b1 = malloc(sizeof(float) * 50);
+    float *b2 = malloc(sizeof(float) * 100);
+    float *b3 = malloc(sizeof(float) * 10);
+    float *avr_dEdA1 = malloc(sizeof(float) * 784 * 50);
+    float *avr_dEdb1 = malloc(sizeof(float) * 50);
+    float *avr_dEdA2 = malloc(sizeof(float) * 50 * 100);
+    float *avr_dEdb2 = malloc(sizeof(float) * 100);
+    float *avr_dEdA3 = malloc(sizeof(float) * 100 * 10);
+    float *avr_dEdb3 = malloc(sizeof(float) * 10);
     //行列を乱数で初期化
-    rand_init(7840, A);
-    rand_init(10, b);
+    rand_init(784 * 50, A1);
+    rand_init(50 * 100, A2);
+    rand_init(100 * 10, A3);
+    rand_init(50, b1);
+    rand_init(100, b2);
+    rand_init(10, b3);
     //添字の初期化
-    for (int i = 0; i < 10000; i++){
+    for (int i = 0; i < 60000; i++){
         index[i] = i;
     }
     //エポックの開始
     for (int i = 0; i < epoch; i++){
         //シャッフル
-        shuffle(10000, index);
+        shuffle(60000, index);
         //ミニバッチ学習開始
-        for (int j = 0; j < 10000/batch_size; j++){
+        for (int j = 0; j < 60000/batch_size; j++){
             //平均勾配を０で初期化
-            init(7840, 0, avr_dEdA);
-            init(10, 0, avr_dEdb);
+            init(784 * 50, 0, avr_dEdA1);
+            init(50, 0, avr_dEdb1);
+            init(5000, 0, avr_dEdA2);
+            init(100, 0, avr_dEdb2);
+            init(1000, 0, avr_dEdA3);
+            init(10, 0, avr_dEdb3);
             //平均勾配にdEdA、dEdbを加える、100の添字について
             for (int k = batch_size * j; k < batch_size * (j + 1); k++){
-                backward3(A, b, test_x + 784*index[k], test_y[index[k]], y, dEdA, dEdb);
-                add(7840, dEdA, avr_dEdA);
-                add(10, dEdb, avr_dEdb);
+                backward6(A1, b1, A2, b2, A3, b3, train_x + height * width * index[k], train_y[index[k]], y, dEdA1, dEdb1, dEdA2, dEdb2, dEdA3, dEdb3);
+                add(784 * 50, dEdA1, avr_dEdA1);
+                add(50, dEdb1, avr_dEdb1);
+                add(5000, dEdA2, avr_dEdA2);
+                add(100, dEdb2, avr_dEdb2);
+                add(1000, dEdA3, avr_dEdA3);
+                add(10, dEdb3, avr_dEdb3);
             }
             //新たな平均勾配をえる
-            scale(7840, -l_rate/batch_size, avr_dEdA); 
-            scale(10, -l_rate/batch_size, avr_dEdb);
+            scale(784 * 50, -l_rate/batch_size, avr_dEdA1); 
+            scale(50, -l_rate/batch_size, avr_dEdb1);
+            scale(5000, -l_rate/batch_size, avr_dEdA2); 
+            scale(100, -l_rate/batch_size, avr_dEdb2);
+            scale(1000, -l_rate/batch_size, avr_dEdA3); 
+            scale(10, -l_rate/batch_size, avr_dEdb3);
             //学習率をかけ、行列、ベクトルの更新
-            add(7840, avr_dEdA, A);
-            add(10, avr_dEdb, b);
+            add(784 * 50, avr_dEdA1, A1);
+            add(50, avr_dEdb1, b1);
+            add(5000, avr_dEdA2, A2);
+            add(100, avr_dEdb2, b2);
+            add(1000, avr_dEdA3, A3);
+            add(10, avr_dEdb3, b3);
         }
         //ミニバッチ学習終了
-        //正解率を表示clear
+        //正解率を表示
         int sum = 0;
         for (int j = 0; j < test_count; j++){
-            if(inference3(A, b, test_x + j*width*height) == test_y[j]){
+            if(inference6(A1, b1, A2, b2, A3, b3, test_x + j * width * height) == test_y[j]){
                 sum++;
             }
         }
         printf("%f%%\n", sum * 100.0 / test_count);
     }
     free(y);
-    free(dEdA);
-    free(dEdb);
-    free(A);
-    free(b);
-    free(avr_dEdA);
-    free(avr_dEdb);
-
+    free(dEdA3);
+    free(dEdb3);
+    free(dEdA1);
+    free(dEdb1);
+    free(dEdA2);
+    free(dEdb2);
+    free(A1);
+    free(A2);
+    free(A3);
+    free(b1);
+    free(b2);
+    free(b3);
+    free(avr_dEdA1);
+    free(avr_dEdb1);
+    free(avr_dEdA2);
+    free(avr_dEdb2);
+    free(avr_dEdA3);
+    free(avr_dEdb3);
     return 0;
 }

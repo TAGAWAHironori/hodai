@@ -10,7 +10,7 @@ void add(int n, const float * x, float * o){
 void scale(int n, float x, float * o){
     int i;
     for (i = 0; i < n; i++){
-        o[i] += x;
+        o[i] *= x;
     }
 }
 
